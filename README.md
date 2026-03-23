@@ -14,7 +14,7 @@ A New Relic One (NR1) custom visualisation for capacity planning. It correlates 
 
 ## Screenshots
 
-<!-- Add screenshots here -->
+![Screenshot](viz_screenshot.png)
 
 ---
 
@@ -129,3 +129,5 @@ Open New Relic One, go to **Apps > Custom Visualizations > Capacity Planning**, 
 nr1 nerdpack:publish
 nr1 subscription:set
 ```
+
+
