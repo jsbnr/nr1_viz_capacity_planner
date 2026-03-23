@@ -1,0 +1,11 @@
+# IDEs
+.DS_Store
+.idea
+PLAN.md
+
+# OS
+node_modules/
+
+# Build
+dist/
+tmp/

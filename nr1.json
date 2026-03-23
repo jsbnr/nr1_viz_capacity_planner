@@ -1,0 +1,6 @@
+{
+  "schemaType": "NERDPACK",
+  "id": "f866c553-67a7-4f27-acbe-00b830965c7b",
+  "displayName": "Capacity Planner",
+  "description": "Capacity planning visualisation using scatter plots and linear regression."
+}

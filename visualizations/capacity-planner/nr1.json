@@ -1,0 +1,112 @@
+{
+  "schemaType": "VISUALIZATION",
+  "id": "capacity-planner",
+  "displayName": "Capacity Planning Scatter Plot",
+  "description": "Scatter plot with linear regression for capacity planning — compare host metrics against service throughput across configurable time-window samples.",
+  "configuration": [
+    {
+      "name": "bucketSize",
+      "title": "Bucket Size (seconds)",
+      "description": "TIMESERIES bucket granularity in seconds. Default: 60.",
+      "type": "number"
+    },
+    {
+      "name": "targetThroughput",
+      "title": "Target Throughput(s)",
+      "description": "Comma-separated list of throughput targets to predict the metric at (e.g. '1000,2000,5000'). Each is shown as a vertical line on the chart and a column in the projection table.",
+      "type": "string"
+    },
+    {
+      "name": "xAxisMultiplier",
+      "title": "X-Axis Multiplier",
+      "description": "Extends the scatter plot X-axis to (max observed throughput × multiplier) for trend extrapolation. Default: 1.",
+      "type": "number"
+    },
+    {
+      "name": "multipliers",
+      "title": "Projection Multipliers",
+      "description": "Comma-separated list of throughput multipliers to show as columns in the projection table (e.g. '1,2,4,10,20'). Default: 1,2,4,10.",
+      "type": "string"
+    },
+    {
+      "name": "tpsPercentile",
+      "title": "TPS Percentile",
+      "description": "Percentile (1–100) of observed throughput used as the baseline for projection column headers and multiplier calculations. Default: 95 (P95). Use 50 for median or 100 for max.",
+      "type": "number"
+    },
+    {
+      "name": "xAxisLabel",
+      "title": "X-Axis Label",
+      "description": "Label shown on the scatter plot X-axis. Default: 'Throughput'.",
+      "type": "string"
+    },
+    {
+      "name": "yAxisLabel",
+      "title": "Y-Axis Label",
+      "description": "Label shown on the scatter plot Y-axis. Default: 'Metric Value'.",
+      "type": "string"
+    },
+    {
+      "name": "regressionType",
+      "title": "Regression Type",
+      "description": "Algorithm used to fit trend lines. Default: linear.",
+      "type": "enum",
+      "items": [
+        { "title": "Linear", "value": "linear" },
+        { "title": "Polynomial (quadratic)", "value": "polynomial" },
+        { "title": "Power", "value": "power" },
+        { "title": "Exponential", "value": "exponential" }
+      ]
+    },
+    {
+      "name": "samples",
+      "title": "Data Samples",
+      "description": "One or more named time-window samples (e.g. 'Black Friday', 'Normal Tuesday').",
+      "type": "collection",
+      "items": [
+        {
+          "name": "accountId",
+          "title": "Account ID",
+          "description": "The New Relic account to query for this sample.",
+          "type": "account-id"
+        },
+        {
+          "name": "name",
+          "title": "Sample Name",
+          "description": "Display label for this sample (e.g. 'Black Friday').",
+          "type": "string"
+        },
+        {
+          "name": "color",
+          "title": "Colour",
+          "description": "Optional hex or CSS colour for this sample (e.g. '#E74C3C'). Defaults to automatic palette assignment.",
+          "type": "string"
+        },
+        {
+          "name": "startTime",
+          "title": "Start Time",
+          "description": "Window start. Accepts YYYY-MM-DD (midnight) or YYYY-MM-DD HH:mm:ss.",
+          "type": "string"
+        },
+        {
+          "name": "endTime",
+          "title": "End Time",
+          "description": "Window end. Accepts YYYY-MM-DD (midnight) or YYYY-MM-DD HH:mm:ss. Defaults to 24 hours after start time if omitted.",
+          "type": "string"
+        },
+        {
+          "name": "throughputQuery",
+          "title": "Throughput Query",
+          "description": "NRQL returning a single numeric value per bucket (e.g. SELECT count(*) AS value FROM Transaction). Do NOT include TIMESERIES or SINCE/UNTIL — these are added automatically.",
+          "type": "nrql"
+        },
+        {
+          "name": "metricsQuery",
+          "title": "Metrics Query",
+          "description": "NRQL returning one or more numeric columns per bucket (e.g. SELECT average(cpuPercent), average(memoryUsedPercent) FROM SystemSample). Do NOT include TIMESERIES or SINCE/UNTIL.",
+          "type": "nrql"
+        }
+      ]
+    }
+  ]
+}
