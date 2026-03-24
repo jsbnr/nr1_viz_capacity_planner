@@ -236,7 +236,14 @@ export default function CapacityPlannerViz({
       if (s.startEpoch != null && s.endEpoch != null) {
         label = formatEpochWindow(s.startEpoch, s.endEpoch);
       } else if (s.startTime) {
-        label = s.endTime ? `${s.startTime} – ${s.endTime}` : s.startTime;
+        const startSec = Math.floor(new Date(s.startTime).getTime() / 1000);
+        if (s.endTime) {
+          const endSec = Math.floor(new Date(s.endTime).getTime() / 1000);
+          label = formatEpochWindow(startSec, endSec);
+        } else {
+          const opts = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false };
+          label = new Date(s.startTime).toLocaleString(undefined, opts);
+        }
       }
       if (label) map.set(s.name, label);
     }

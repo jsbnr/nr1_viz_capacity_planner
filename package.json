@@ -1,6 +1,6 @@
 {
   "name": "capacity-planner-viz",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Capacity Planning scatter plot with linear regression",
   "scripts": {
     "start": "nr1 nerdpack:serve",
