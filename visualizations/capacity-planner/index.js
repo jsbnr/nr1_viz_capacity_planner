@@ -114,7 +114,14 @@ function generateShades(baseHex, n) {
     return hslToHex(h, baseSat, lightness);
   });
 }
-import { BlockText, EmptyState } from 'nr1';
+function formatEpochWindow(startSec, endSec) {
+  const opts = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false };
+  const start = new Date(startSec * 1000).toLocaleString(undefined, opts);
+  const end   = new Date(endSec   * 1000).toLocaleString(undefined, opts);
+  return `${start} – ${end}`;
+}
+
+import { BlockText, EmptyState, PlatformStateContext } from 'nr1';
 
 import useNerdGraphBatch from './hooks/useNerdGraphBatch';
 import { linearRegression, polynomialRegression, powerRegression, exponentialRegression } from './utils/regression';
@@ -155,7 +162,6 @@ import './styles.scss';
  * }} props
  */
 export default function CapacityPlannerViz({
-  bucketSize,
   targetThroughput,
   xAxisMultiplier,
   xAxisLabel,
@@ -165,7 +171,7 @@ export default function CapacityPlannerViz({
   regressionType,
   samples,
 }) {
-  const effectiveBucketSize = bucketSize || 60;
+  const { timeRange } = React.useContext(PlatformStateContext);
   const effectiveMultiplier = xAxisMultiplier || 1;
 
   // --- Parse target throughputs (comma-delimited string → sorted number array) ---
@@ -192,18 +198,53 @@ export default function CapacityPlannerViz({
   const validSamples = Array.isArray(samples) ? samples.filter((s) => s && s.name) : [];
 
   // --- Strip cosmetic fields so the hook only re-fetches when query params change ---
-  const querySamples = useMemo(
-    () => validSamples.map(({ accountId, name, startTime, endTime, throughputQuery, metricsQuery }) => ({
-      accountId, name, startTime, endTime, throughputQuery, metricsQuery,
-    })),
-    [validSamples],
-  );
+  const querySamples = useMemo(() => {
+    const nowMs = Date.now();
+    return validSamples.map(({
+      accountId, name, startTime, endTime,
+      throughputQuery, metricsQuery,
+      useTimePicker, defaultDurationMinutes, bucketSize,
+    }) => {
+      if (useTimePicker) {
+        let startEpoch, endEpoch;
+        if (timeRange?.begin_time && timeRange?.end_time) {
+          // Absolute range (platform values are milliseconds)
+          startEpoch = Math.floor(timeRange.begin_time / 1000);
+          endEpoch   = Math.floor(timeRange.end_time   / 1000);
+        } else if (timeRange?.duration) {
+          // Relative range (duration is milliseconds)
+          endEpoch   = Math.floor(nowMs / 1000);
+          startEpoch = endEpoch - Math.floor(timeRange.duration / 1000);
+        } else {
+          // "Default" — fall back to configured minutes (or 60)
+          const minutes = (defaultDurationMinutes > 0 ? defaultDurationMinutes : 60);
+          endEpoch   = Math.floor(nowMs / 1000);
+          startEpoch = endEpoch - minutes * 60;
+        }
+        return { accountId, name, throughputQuery, metricsQuery, startEpoch, endEpoch, bucketSize };
+      }
+      return { accountId, name, startTime, endTime, throughputQuery, metricsQuery, bucketSize };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(validSamples), timeRange]);
+
+  // --- Build time window label per sample (for display in the projection table) ---
+  const sampleTimeWindows = useMemo(() => {
+    const map = new Map();
+    for (const s of querySamples) {
+      let label;
+      if (s.startEpoch != null && s.endEpoch != null) {
+        label = formatEpochWindow(s.startEpoch, s.endEpoch);
+      } else if (s.startTime) {
+        label = s.endTime ? `${s.startTime} – ${s.endTime}` : s.startTime;
+      }
+      if (label) map.set(s.name, label);
+    }
+    return map;
+  }, [querySamples]);
 
   // --- Fetch batched NRQL data ---
-  const { series, warnings, loading, error, progress } = useNerdGraphBatch(
-    querySamples,
-    effectiveBucketSize,
-  );
+  const { series, warnings, loading, error, progress } = useNerdGraphBatch(querySamples);
 
   // --- Build colour map: seriesLabel → colour ---
   // Each series gets its own colour. Series within the same sample share a hue
@@ -337,6 +378,7 @@ export default function CapacityPlannerViz({
         sampleColourMap={seriesColourMap}
         multipliers={effectiveMultipliers}
         tpsPercentile={tpsPercentile}
+        sampleTimeWindows={sampleTimeWindows}
       />
     </div>
   );

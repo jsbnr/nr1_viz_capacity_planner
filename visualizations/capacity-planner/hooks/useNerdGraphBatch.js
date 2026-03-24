@@ -7,11 +7,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { NerdGraphQuery } from 'nr1';
 
-/** Maximum hours allowed per sample window. Enforced before any fetching. */
+/** Used as the default end-time fallback when no end is specified. Not a hard cap. */
 export const MAX_WINDOW_HOURS = 24;
 
 /** NRQL TIMESERIES queries are capped at 366 buckets per request. */
 const MAX_BUCKETS_PER_QUERY = 366;
+
+/**
+ * Maximum NerdGraph batch requests per sample. If the window + bucket size would
+ * exceed this, bucket size is auto-scaled upward and a warning is emitted.
+ * 4 batches covers 24 h at 1-minute granularity (1440 buckets → ceil(1440/366) = 4).
+ */
+const MAX_BATCHES = 4;
 
 /**
  * Keys that appear in every NRQL TIMESERIES result row but are not metric values.
@@ -350,7 +357,6 @@ function buildSeries(sampleName, throughputMap, metricsMap, extraExclusions = ne
  *   throughputQuery: string,
  *   metricsQuery: string
  * }>} samples - Sample configuration objects from nr1.json. Each sample carries its own accountId.
- * @param {number} bucketSize - TIMESERIES bucket granularity in seconds (default 60).
  * @returns {{
  *   series: Array<{sampleName:string, metricName:string, label:string, points:Array<{x:number,y:number}>}>,
  *   loading: boolean,
@@ -358,7 +364,7 @@ function buildSeries(sampleName, throughputMap, metricsMap, extraExclusions = ne
  *   progress: {done: number, total: number}
  * }}
  */
-export default function useNerdGraphBatch(samples, bucketSize = 60) {
+export default function useNerdGraphBatch(samples) {
   const [series, setSeries] = useState([]);
   const [warnings, setWarnings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -388,32 +394,44 @@ export default function useNerdGraphBatch(samples, bucketSize = 60) {
       try {
         // --- Phase 1: Parse and validate all sample windows up-front ---
         const parsedSamples = [];
+        const allWarnings = [];
         for (const sample of samples) {
-          const { accountId: sampleAccountId, name, startTime, endTime, throughputQuery, metricsQuery } = sample;
+          const { accountId: sampleAccountId, name, startTime, endTime,
+                  startEpoch: precomputedStart, endEpoch: precomputedEnd,
+                  throughputQuery, metricsQuery } = sample;
 
-          if (!sampleAccountId || !name || !startTime || !throughputQuery || !metricsQuery) {
+          if (!sampleAccountId || !name || !throughputQuery || !metricsQuery) {
             throw new Error(`Sample "${name || '(unnamed)'}" is missing required fields (including Account ID).`);
           }
+          if (!precomputedStart && !startTime) {
+            throw new Error(`Sample "${name}": either "Start Time" or "Use Time Picker" must be configured.`);
+          }
 
-          const startEpoch = parseDateToEpoch(startTime);
+          const startEpoch = precomputedStart ?? parseDateToEpoch(startTime);
           // Default to 24 hours after start when no end time is provided.
-          const endEpoch = endTime ? parseDateToEpoch(endTime) : startEpoch + MAX_WINDOW_HOURS * 3600;
+          const endEpoch = precomputedEnd
+            ? precomputedEnd
+            : endTime ? parseDateToEpoch(endTime) : startEpoch + MAX_WINDOW_HOURS * 3600;
 
           if (endEpoch <= startEpoch) {
             throw new Error(`Sample "${name}": end time must be after start time.`);
           }
 
-          const windowHours = (endEpoch - startEpoch) / 3600;
-          if (windowHours > MAX_WINDOW_HOURS) {
-            throw new Error(
-              `Sample "${name}": window of ${windowHours.toFixed(1)} hours exceeds the ` +
-                `${MAX_WINDOW_HOURS}-hour maximum.`,
+          // Auto-scale bucket size to keep query count within MAX_BATCHES.
+          const configuredBucketSize = sample.bucketSize ?? 60;
+          const windowSeconds = endEpoch - startEpoch;
+          const minBucketSize = Math.ceil(windowSeconds / (MAX_BATCHES * MAX_BUCKETS_PER_QUERY));
+          const effectiveBucketSize = Math.max(configuredBucketSize, minBucketSize);
+          if (effectiveBucketSize > configuredBucketSize) {
+            allWarnings.push(
+              `Sample "${name}": bucket size auto-scaled from ${configuredBucketSize}s to ` +
+              `${effectiveBucketSize}s to fit a ${(windowSeconds / 3600).toFixed(1)}-hour window.`,
             );
           }
 
           // Split window into batches if too many buckets.
-          const totalBuckets = Math.ceil((endEpoch - startEpoch) / bucketSize);
-          const subWindowSize = MAX_BUCKETS_PER_QUERY * bucketSize; // seconds per batch
+          const totalBuckets = Math.ceil(windowSeconds / effectiveBucketSize);
+          const subWindowSize = MAX_BUCKETS_PER_QUERY * effectiveBucketSize; // seconds per batch
 
           const batches = [];
           let batchStart = startEpoch;
@@ -430,6 +448,7 @@ export default function useNerdGraphBatch(samples, bucketSize = 60) {
             metricsQuery,
             batches,
             totalBuckets,
+            effectiveBucketSize,
           });
         }
 
@@ -439,7 +458,6 @@ export default function useNerdGraphBatch(samples, bucketSize = 60) {
 
         // --- Phase 2: Fetch each sample's batches sequentially ---
         const allSeries = [];
-        const allWarnings = [];
 
         for (const sample of parsedSamples) {
           if (abortRef.current) break;
@@ -452,9 +470,9 @@ export default function useNerdGraphBatch(samples, bucketSize = 60) {
 
             const sinceUntil = `SINCE ${start} UNTIL ${end}`;
             const throughputNrql =
-              `${sample.throughputQuery} TIMESERIES ${bucketSize} SECONDS ${sinceUntil}`;
+              `${sample.throughputQuery} TIMESERIES ${sample.effectiveBucketSize} SECONDS ${sinceUntil}`;
             const metricsNrql =
-              `${sample.metricsQuery} TIMESERIES ${bucketSize} SECONDS ${sinceUntil}`;
+              `${sample.metricsQuery} TIMESERIES ${sample.effectiveBucketSize} SECONDS ${sinceUntil}`;
 
             // Fetch throughput batch.
             const tQuery = buildNrqlFragment(sample.accountId, throughputNrql, 'result');
@@ -524,7 +542,7 @@ export default function useNerdGraphBatch(samples, bucketSize = 60) {
       abortRef.current = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(samples), bucketSize]);
+  }, [JSON.stringify(samples)]);
 
   return { series, warnings, loading, error, progress };
 }

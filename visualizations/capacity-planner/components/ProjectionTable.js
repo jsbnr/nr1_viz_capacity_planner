@@ -64,7 +64,7 @@ function fmt(value) {
  * }} props
  * @returns {React.ReactElement|null}
  */
-export default function ProjectionTable({ series, regressions, targetThroughputs, sampleColourMap, multipliers, tpsPercentile }) {
+export default function ProjectionTable({ series, regressions, targetThroughputs, sampleColourMap, multipliers, tpsPercentile, sampleTimeWindows }) {
   const activeMultipliers = multipliers || [];
   if (!series || series.length === 0) return null;
 
@@ -101,7 +101,8 @@ export default function ProjectionTable({ series, regressions, targetThroughputs
     const r2 = reg ? reg.r2 : null;
 
     const colour = sampleColourMap ? sampleColourMap.get(label) : undefined;
-    return { label, baseThroughput, projections, atTargets, r2, colour };
+    const timeWindow = sampleTimeWindows ? sampleTimeWindows.get(sampleName) : undefined;
+    return { label, sampleName, timeWindow, baseThroughput, projections, atTargets, r2, colour };
   });
 
   return (
@@ -127,18 +128,25 @@ export default function ProjectionTable({ series, regressions, targetThroughputs
         {({ item }) => (
           <TableRow>
             <TableRowCell>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, overflow: 'hidden', textOverflow: 'clip', whiteSpace: 'nowrap', maxWidth: '100%' }}>
-                {item.colour && (
-                  <span style={{
-                    display: 'inline-block',
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    backgroundColor: item.colour,
-                    flexShrink: 0,
-                  }} />
+              <span style={{ display: 'inline-flex', flexDirection: 'column', overflow: 'hidden', maxWidth: '100%' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                  {item.colour && (
+                    <span style={{
+                      display: 'inline-block',
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      backgroundColor: item.colour,
+                      flexShrink: 0,
+                    }} />
+                  )}
+                  <span style={{ overflow: 'hidden', textOverflow: 'clip', whiteSpace: 'nowrap' }}>{item.label}</span>
+                </span>
+                {item.timeWindow && (
+                  <span style={{ fontSize: '0.75em', opacity: 0.6, whiteSpace: 'nowrap' }}>
+                    {item.timeWindow}
+                  </span>
                 )}
-                <span style={{ overflow: 'hidden', textOverflow: 'clip', whiteSpace: 'nowrap' }}>{item.label}</span>
               </span>
             </TableRowCell>
             <TableRowCell>
